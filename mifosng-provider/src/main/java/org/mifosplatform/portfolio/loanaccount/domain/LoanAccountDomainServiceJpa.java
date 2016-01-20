@@ -38,11 +38,6 @@ import org.mifosplatform.organisation.workingdays.domain.WorkingDays;
 import org.mifosplatform.organisation.workingdays.domain.WorkingDaysRepositoryWrapper;
 import org.mifosplatform.portfolio.account.domain.AccountTransferRepository;
 import org.mifosplatform.portfolio.account.domain.AccountTransferTransaction;
-import org.mifosplatform.portfolio.calendar.domain.Calendar;
-import org.mifosplatform.portfolio.calendar.domain.CalendarEntityType;
-import org.mifosplatform.portfolio.calendar.domain.CalendarInstance;
-import org.mifosplatform.portfolio.calendar.domain.CalendarInstanceRepository;
-import org.mifosplatform.portfolio.calendar.service.CalendarUtils;
 import org.mifosplatform.portfolio.client.domain.Client;
 import org.mifosplatform.portfolio.client.exception.ClientNotActiveException;
 import org.mifosplatform.portfolio.common.BusinessEventNotificationConstants.BUSINESS_ENTITY;
@@ -54,10 +49,9 @@ import org.mifosplatform.portfolio.group.exception.GroupNotActiveException;
 import org.mifosplatform.portfolio.loanaccount.data.HolidayDetailDTO;
 import org.mifosplatform.portfolio.loanaccount.data.LoanScheduleAccrualData;
 import org.mifosplatform.portfolio.loanaccount.data.ScheduleGeneratorDTO;
-import org.mifosplatform.portfolio.loanaccount.loanschedule.domain.LoanScheduleGeneratorFactory;
 import org.mifosplatform.portfolio.loanaccount.service.LoanAccrualPlatformService;
 import org.mifosplatform.portfolio.loanaccount.service.LoanAssembler;
-import org.mifosplatform.portfolio.loanproduct.domain.LoanProductRelatedDetail;
+import org.mifosplatform.portfolio.loanaccount.service.LoanUtilService;
 import org.mifosplatform.portfolio.note.domain.Note;
 import org.mifosplatform.portfolio.note.domain.NoteRepository;
 import org.mifosplatform.portfolio.paymentdetail.domain.PaymentDetail;
@@ -81,13 +75,12 @@ public class LoanAccountDomainServiceJpa implements LoanAccountDomainService {
     private final JournalEntryWritePlatformService journalEntryWritePlatformService;
     private final NoteRepository noteRepository;
     private final AccountTransferRepository accountTransferRepository;
-    private final LoanScheduleGeneratorFactory loanScheduleFactory;
     private final ApplicationCurrencyRepositoryWrapper applicationCurrencyRepository;
-    private final CalendarInstanceRepository calendarInstanceRepository;
     private final LoanRepaymentScheduleInstallmentRepository repaymentScheduleInstallmentRepository;
     private final LoanAccrualPlatformService loanAccrualPlatformService;
     private final PlatformSecurityContext context;
     private final BusinessEventNotifierService businessEventNotifierService;
+    private final LoanUtilService loanUtilService;
 
     @Autowired
     public LoanAccountDomainServiceJpa(final LoanAssembler loanAccountAssembler, final LoanRepository loanRepository,
@@ -96,12 +89,11 @@ public class LoanAccountDomainServiceJpa implements LoanAccountDomainService {
             final WorkingDaysRepositoryWrapper workingDaysRepository,
             final ApplicationCurrencyRepositoryWrapper applicationCurrencyRepositoryWrapper,
             final JournalEntryWritePlatformService journalEntryWritePlatformService,
-            final AccountTransferRepository accountTransferRepository, final LoanScheduleGeneratorFactory loanScheduleFactory,
+            final AccountTransferRepository accountTransferRepository,
             final ApplicationCurrencyRepositoryWrapper applicationCurrencyRepository,
-            final CalendarInstanceRepository calendarInstanceRepository,
             final LoanRepaymentScheduleInstallmentRepository repaymentScheduleInstallmentRepository,
             final LoanAccrualPlatformService loanAccrualPlatformService, final PlatformSecurityContext context,
-            final BusinessEventNotifierService businessEventNotifierService) {
+            final BusinessEventNotifierService businessEventNotifierService, final LoanUtilService loanUtilService) {
         this.loanAccountAssembler = loanAccountAssembler;
         this.loanRepository = loanRepository;
         this.loanTransactionRepository = loanTransactionRepository;
@@ -112,20 +104,20 @@ public class LoanAccountDomainServiceJpa implements LoanAccountDomainService {
         this.applicationCurrencyRepositoryWrapper = applicationCurrencyRepositoryWrapper;
         this.journalEntryWritePlatformService = journalEntryWritePlatformService;
         this.accountTransferRepository = accountTransferRepository;
-        this.loanScheduleFactory = loanScheduleFactory;
         this.applicationCurrencyRepository = applicationCurrencyRepository;
-        this.calendarInstanceRepository = calendarInstanceRepository;
         this.repaymentScheduleInstallmentRepository = repaymentScheduleInstallmentRepository;
         this.loanAccrualPlatformService = loanAccrualPlatformService;
         this.context = context;
         this.businessEventNotifierService = businessEventNotifierService;
+        this.loanUtilService = loanUtilService;
     }
 
     @Transactional
     @Override
     public LoanTransaction makeRepayment(final Loan loan, final CommandProcessingResultBuilder builderResult,
             final LocalDate transactionDate, final BigDecimal transactionAmount, final PaymentDetail paymentDetail, final String noteText,
-            final String txnExternalId, final boolean isRecoveryRepayment, boolean isAccountTransfer) {
+            final String txnExternalId, final boolean isRecoveryRepayment, boolean isAccountTransfer, HolidayDetailDTO holidayDetailDto,
+            Boolean isHolidayValidationDone) {
         AppUser currentUser = getAppUserIfPresent();
         checkClientOrGroupActive(loan);
         this.businessEventNotifierService.notifyBusinessEventToBeExecuted(BUSINESS_EVENTS.LOAN_MAKE_REPAYMENT,
@@ -158,45 +150,16 @@ public class LoanAccountDomainServiceJpa implements LoanAccountDomainService {
                     txnExternalId, currentDateTime, currentUser);
         }
 
-        final boolean allowTransactionsOnHoliday = this.configurationDomainService.allowTransactionsOnHolidayEnabled();
-        final List<Holiday> holidays = this.holidayRepository.findByOfficeIdAndGreaterThanDate(loan.getOfficeId(),
-                transactionDate.toDate(), HolidayStatusType.ACTIVE.getValue());
-        final WorkingDays workingDays = this.workingDaysRepository.findOne();
-        final boolean allowTransactionsOnNonWorkingDay = this.configurationDomainService.allowTransactionsOnNonWorkingDayEnabled();
-
-        CalendarInstance restCalendarInstance = null;
-        CalendarInstance compoundingCalendarInstance = null;
-        ApplicationCurrency applicationCurrency = null;
-        LocalDate calculatedRepaymentsStartingFromDate = null;
-        boolean isHolidayEnabled = false;
         LocalDate recalculateFrom = null;
-        Long overdurPenaltyWaitPeriod = null;
         if (loan.repaymentScheduleDetail().isInterestRecalculationEnabled()) {
-            restCalendarInstance = calendarInstanceRepository.findCalendarInstaneByEntityId(loan.loanInterestRecalculationDetailId(),
-                    CalendarEntityType.LOAN_RECALCULATION_REST_DETAIL.getValue());
-            compoundingCalendarInstance = calendarInstanceRepository.findCalendarInstaneByEntityId(
-                    loan.loanInterestRecalculationDetailId(), CalendarEntityType.LOAN_RECALCULATION_COMPOUNDING_DETAIL.getValue());
-
-            final MonetaryCurrency currency = loan.getCurrency();
-            applicationCurrency = this.applicationCurrencyRepository.findOneWithNotFoundDetection(currency);
-            final CalendarInstance calendarInstance = this.calendarInstanceRepository.findCalendarInstaneByEntityId(loan.getId(),
-                    CalendarEntityType.LOANS.getValue());
-            calculatedRepaymentsStartingFromDate = getCalculatedRepaymentsStartingFromDate(loan.getDisbursementDate(), loan,
-                    calendarInstance);
-
-            isHolidayEnabled = this.configurationDomainService.isRescheduleRepaymentsOnHolidaysEnabled();
-            overdurPenaltyWaitPeriod = this.configurationDomainService.retrievePenaltyWaitPeriod();
             recalculateFrom = transactionDate;
         }
-        HolidayDetailDTO holidayDetailDTO = new HolidayDetailDTO(isHolidayEnabled, holidays, workingDays, allowTransactionsOnHoliday,
-                allowTransactionsOnNonWorkingDay);
-        final ScheduleGeneratorDTO scheduleGeneratorDTO = new ScheduleGeneratorDTO(loanScheduleFactory, applicationCurrency,
-                calculatedRepaymentsStartingFromDate, holidayDetailDTO, restCalendarInstance, compoundingCalendarInstance, recalculateFrom,
-                overdurPenaltyWaitPeriod);
+        final ScheduleGeneratorDTO scheduleGeneratorDTO = this.loanUtilService.buildScheduleGeneratorDTO(loan, recalculateFrom,
+                holidayDetailDto);
 
         final ChangedTransactionDetail changedTransactionDetail = loan.makeRepayment(newRepaymentTransaction,
                 defaultLoanLifecycleStateMachine(), existingTransactionIds, existingReversedTransactionIds, isRecoveryRepayment,
-                scheduleGeneratorDTO, currentUser);
+                scheduleGeneratorDTO, currentUser, isHolidayValidationDone);
 
         saveLoanTransactionWithDataIntegrityViolationChecks(newRepaymentTransaction);
 
@@ -264,6 +227,28 @@ public class LoanAccountDomainServiceJpa implements LoanAccountDomainService {
                 }
             }
             this.loanRepository.saveAndFlush(loan);
+        } catch (final DataIntegrityViolationException e) {
+            final Throwable realCause = e.getCause();
+            final List<ApiParameterError> dataValidationErrors = new ArrayList<>();
+            final DataValidatorBuilder baseDataValidator = new DataValidatorBuilder(dataValidationErrors).resource("loan.transaction");
+            if (realCause.getMessage().toLowerCase().contains("external_id_unique")) {
+                baseDataValidator.reset().parameter("externalId").failWithCode("value.must.be.unique");
+            }
+            if (!dataValidationErrors.isEmpty()) { throw new PlatformApiDataValidationException("validation.msg.validation.errors.exist",
+                    "Validation errors exist.", dataValidationErrors); }
+        }
+    }
+
+    @Override
+    public void saveLoanWithDataIntegrityViolationChecks(final Loan loan) {
+        try {
+            List<LoanRepaymentScheduleInstallment> installments = loan.fetchRepaymentScheduleInstallments();
+            for (LoanRepaymentScheduleInstallment installment : installments) {
+                if (installment.getId() == null) {
+                    this.repaymentScheduleInstallmentRepository.save(installment);
+                }
+            }
+            this.loanRepository.save(loan);
         } catch (final DataIntegrityViolationException e) {
             final Throwable realCause = e.getCause();
             final List<ApiParameterError> dataValidationErrors = new ArrayList<>();
@@ -429,34 +414,6 @@ public class LoanAccountDomainServiceJpa implements LoanAccountDomainService {
         saveLoanTransactionWithDataIntegrityViolationChecks(loanTransaction);
     }
 
-    @Override
-    public LocalDate getCalculatedRepaymentsStartingFromDate(final LocalDate actualDisbursementDate, final Loan loan,
-            final CalendarInstance calendarInstance) {
-        final Calendar calendar = calendarInstance == null ? null : calendarInstance.getCalendar();
-        LocalDate calculatedRepaymentsStartingFromDate = loan.getExpectedFirstRepaymentOnDate();
-        if (calendar != null) {// sync repayments
-
-            // TODO: AA - user provided first repayment date takes precedence
-            // over recalculated meeting date
-            if (calculatedRepaymentsStartingFromDate == null) {
-                // FIXME: AA - Possibility of having next meeting date
-                // immediately after disbursement date,
-                // need to have minimum number of days gap between disbursement
-                // and first repayment date.
-                final LoanProductRelatedDetail repaymentScheduleDetails = loan.repaymentScheduleDetail();
-                if (repaymentScheduleDetails != null) {// Not expecting to be
-                                                       // null
-                    final Integer repayEvery = repaymentScheduleDetails.getRepayEvery();
-                    final String frequency = CalendarUtils.getMeetingFrequencyFromPeriodFrequencyType(repaymentScheduleDetails
-                            .getRepaymentPeriodFrequencyType());
-                    calculatedRepaymentsStartingFromDate = CalendarUtils.getFirstRepaymentMeetingDate(calendar, actualDisbursementDate,
-                            repayEvery, frequency);
-                }
-            }
-        }
-        return calculatedRepaymentsStartingFromDate;
-    }
-
     /*
      * (non-Javadoc)
      * 
@@ -529,38 +486,6 @@ public class LoanAccountDomainServiceJpa implements LoanAccountDomainService {
             transferTransaction.updateToLoanTransaction(newLoanTransaction);
             this.accountTransferRepository.save(transferTransaction);
         }
-    }
-
-    @Override
-    public ScheduleGeneratorDTO buildScheduleGeneratorDTO(final Loan loan) {
-
-        final MonetaryCurrency currency = loan.getCurrency();
-        ApplicationCurrency applicationCurrency = this.applicationCurrencyRepository.findOneWithNotFoundDetection(currency);
-        final CalendarInstance calendarInstance = this.calendarInstanceRepository.findCalendarInstaneByEntityId(loan.getId(),
-                CalendarEntityType.LOANS.getValue());
-        LocalDate calculatedRepaymentsStartingFromDate = this.getCalculatedRepaymentsStartingFromDate(loan.getDisbursementDate(), loan,
-                calendarInstance);
-        final boolean isHolidayEnabled = this.configurationDomainService.isRescheduleRepaymentsOnHolidaysEnabled();
-        final List<Holiday> holidays = this.holidayRepository.findByOfficeIdAndGreaterThanDate(loan.getOfficeId(), loan
-                .getExpectedDisbursedOnLocalDate().toDate(), HolidayStatusType.ACTIVE.getValue());
-        final WorkingDays workingDays = this.workingDaysRepository.findOne();
-        final boolean allowTransactionsOnHoliday = this.configurationDomainService.allowTransactionsOnHolidayEnabled();
-        final boolean allowTransactionsOnNonWorkingDay = this.configurationDomainService.allowTransactionsOnNonWorkingDayEnabled();
-
-        HolidayDetailDTO holidayDetailDTO = new HolidayDetailDTO(isHolidayEnabled, holidays, workingDays, allowTransactionsOnHoliday,
-                allowTransactionsOnNonWorkingDay);
-        CalendarInstance restCalendarInstance = null;
-        CalendarInstance compoundingCalendarInstance = null;
-        if (loan.repaymentScheduleDetail().isInterestRecalculationEnabled()) {
-            restCalendarInstance = calendarInstanceRepository.findCalendarInstaneByEntityId(loan.loanInterestRecalculationDetailId(),
-                    CalendarEntityType.LOAN_RECALCULATION_REST_DETAIL.getValue());
-            compoundingCalendarInstance = calendarInstanceRepository.findCalendarInstaneByEntityId(
-                    loan.loanInterestRecalculationDetailId(), CalendarEntityType.LOAN_RECALCULATION_COMPOUNDING_DETAIL.getValue());
-        }
-        ScheduleGeneratorDTO scheduleGeneratorDTO = new ScheduleGeneratorDTO(loanScheduleFactory, applicationCurrency,
-                calculatedRepaymentsStartingFromDate, holidayDetailDTO, restCalendarInstance, compoundingCalendarInstance);
-
-        return scheduleGeneratorDTO;
     }
 
     private AppUser getAppUserIfPresent() {

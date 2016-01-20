@@ -68,8 +68,8 @@ public class ProvisioningEntriesReadPlatformServiceImpl implements ProvisioningE
                     .append("GREATEST(datediff(").append(formattedDate).append(",sch.duedate),0) <= pcd.max_age) and ")
                     .append("pcd.criteria_id is not null ").append("LEFT JOIN m_client mclient ON mclient.id = loan.client_id ")
                     .append("LEFT JOIN m_group mgroup ON mgroup.id = loan.group_id ")
-                    .append("where loan.loan_status_id=300 and sch.completed_derived=false ")
-                    .append("GROUP BY loan.id  order by loan.product_id");
+                    .append("where loan.loan_status_id=300 and sch.duedate = ")
+                    .append("(select MIN(sch1.duedate) from m_loan_repayment_schedule sch1 where sch1.loan_id=loan.id and sch1.completed_derived=false)");
         }
 
         @Override
@@ -213,8 +213,13 @@ public class ProvisioningEntriesReadPlatformServiceImpl implements ProvisioningE
         sqlBuilder.append("select SQL_CALC_FOUND_ROWS ");
         sqlBuilder.append(mapper.getSchema());
         sqlBuilder.append(" order by entry.created_date");
-        sqlBuilder.append(" limit ").append(limit);
-        sqlBuilder.append(" offset ").append(offset);
+        if(limit != null ) {
+            sqlBuilder.append(" limit ").append(limit);    
+        }
+        if(offset != null) {
+            sqlBuilder.append(" offset ").append(offset);    
+        }
+        
         final String sqlCountRows = "SELECT FOUND_ROWS()";
         Object[] whereClauseItemsitems = new Object[] {};
         return this.provisioningEntryDataPaginationHelper.fetchPage(this.jdbcTemplate, sqlCountRows, sqlBuilder.toString(),

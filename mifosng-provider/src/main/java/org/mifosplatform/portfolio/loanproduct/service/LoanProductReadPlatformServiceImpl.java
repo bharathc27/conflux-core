@@ -169,7 +169,7 @@ public class LoanProductReadPlatformServiceImpl implements LoanProductReadPlatfo
                     + "lp.name as name, lp.short_name as shortName, lp.description as description, "
                     + "lp.principal_amount as principal, lp.min_principal_amount as minPrincipal, lp.max_principal_amount as maxPrincipal, lp.currency_code as currencyCode, lp.currency_digits as currencyDigits, lp.currency_multiplesof as inMultiplesOf, "
                     + "lp.nominal_interest_rate_per_period as interestRatePerPeriod, lp.min_nominal_interest_rate_per_period as minInterestRatePerPeriod, lp.max_nominal_interest_rate_per_period as maxInterestRatePerPeriod, lp.interest_period_frequency_enum as interestRatePerPeriodFreq, "
-                    + "lp.annual_nominal_interest_rate as annualInterestRate, lp.interest_method_enum as interestMethod, lp.interest_calculated_in_period_enum as interestCalculationInPeriodMethod,"
+                    + "lp.annual_nominal_interest_rate as annualInterestRate, lp.interest_method_enum as interestMethod, lp.interest_calculated_in_period_enum as interestCalculationInPeriodMethod,lp.allow_partial_period_interest_calcualtion as allowPartialPeriodInterestCalcualtion, "
                     + "lp.repay_every as repaidEvery, lp.repayment_period_frequency_enum as repaymentPeriodFrequency, lp.number_of_repayments as numberOfRepayments, lp.min_number_of_repayments as minNumberOfRepayments, lp.max_number_of_repayments as maxNumberOfRepayments, "
                     + "lp.grace_on_principal_periods as graceOnPrincipalPayment, lp.grace_on_interest_periods as graceOnInterestPayment, lp.grace_interest_free_periods as graceOnInterestCharged,lp.grace_on_arrears_ageing as graceOnArrearsAgeing,lp.overdue_days_for_npa as overdueDaysForNPA, "
                     + "lp.min_days_between_disbursal_and_first_repayment As minimumDaysBetweenDisbursalAndFirstRepayment, "
@@ -192,14 +192,29 @@ public class LoanProductReadPlatformServiceImpl implements LoanProductReadPlatfo
                     + "curr.name as currencyName, curr.internationalized_name_code as currencyNameCode, curr.display_symbol as currencyDisplaySymbol, lp.external_id as externalId, "
                     + "lca.id as lcaId, lca.amortization_method_enum as amortizationBoolean, lca.interest_method_enum as interestMethodConfigBoolean, "
                     + "lca.loan_transaction_strategy_id as transactionProcessingStrategyBoolean,lca.interest_calculated_in_period_enum as interestCalcPeriodBoolean, lca.arrearstolerance_amount as arrearsToleranceBoolean, "
-                    + "lca.repay_every as repaymentFrequencyBoolean, lca.moratorium as graceOnPrincipalAndInterestBoolean, lca.grace_on_arrears_ageing as graceOnArrearsAgingBoolean "
+                    + "lca.repay_every as repaymentFrequencyBoolean, lca.moratorium as graceOnPrincipalAndInterestBoolean, lca.grace_on_arrears_ageing as graceOnArrearsAgingBoolean, "
+                    + "lp.is_linked_to_floating_interest_rates as isLinkedToFloatingInterestRates, "
+                    + "lfr.floating_rates_id as floatingRateId, "
+                    + "fr.name as floatingRateName, "
+                    + "lfr.interest_rate_differential as interestRateDifferential, "
+                    + "lfr.min_differential_lending_rate as minDifferentialLendingRate, "
+                    + "lfr.default_differential_lending_rate as defaultDifferentialLendingRate, "
+                    + "lfr.max_differential_lending_rate as maxDifferentialLendingRate, "
+                    + "lfr.is_floating_interest_rate_calculation_allowed as isFloatingInterestRateCalculationAllowed, "
+                    + "lp.allow_variabe_installments as isVariableIntallmentsAllowed, "
+                    + "lvi.minimum_gap as minimumGap, "
+                    + "lvi.maximum_gap as maximumGap "
                     + " from m_product_loan lp "
                     + " left join m_fund f on f.id = lp.fund_id "
                     + " left join m_product_loan_recalculation_details lpr on lpr.product_id=lp.id "
                     + " left join m_product_loan_guarantee_details lpg on lpg.loan_product_id=lp.id "
                     + " left join ref_loan_transaction_processing_strategy ltps on ltps.id = lp.loan_transaction_strategy_id"
                     + " left join m_product_loan_configurable_attributes lca on lca.loan_product_id = lp.id "
+                    + " left join m_product_loan_floating_rates as lfr on lfr.loan_product_id = lp.id "
+                    + " left join m_floating_rates as fr on lfr.floating_rates_id = fr.id "
+                    + " left join m_product_loan_variable_installment_config as lvi on lvi.loan_product_id = lp.id "
                     + " join m_currency curr on curr.code = lp.currency_code";
+
         }
 
         @Override
@@ -250,19 +265,33 @@ public class LoanProductReadPlatformServiceImpl implements LoanProductReadPlatfo
             final BigDecimal maxInterestRatePerPeriod = rs.getBigDecimal("maxInterestRatePerPeriod");
             final BigDecimal annualInterestRate = rs.getBigDecimal("annualInterestRate");
 
+            final boolean isLinkedToFloatingInterestRates = rs.getBoolean("isLinkedToFloatingInterestRates");
+            final Integer floatingRateId = JdbcSupport.getIntegerDefaultToNullIfZero(rs, "floatingRateId");
+            final String floatingRateName = rs.getString("floatingRateName");
+            final BigDecimal interestRateDifferential = rs.getBigDecimal("interestRateDifferential");
+            final BigDecimal minDifferentialLendingRate = rs.getBigDecimal("minDifferentialLendingRate");
+            final BigDecimal defaultDifferentialLendingRate = rs.getBigDecimal("defaultDifferentialLendingRate");
+            final BigDecimal maxDifferentialLendingRate = rs.getBigDecimal("maxDifferentialLendingRate");
+            final boolean isFloatingInterestRateCalculationAllowed = rs.getBoolean("isFloatingInterestRateCalculationAllowed");
+
+            final boolean isVariableIntallmentsAllowed = rs.getBoolean("isVariableIntallmentsAllowed");
+            final Integer minimumGap = rs.getInt("minimumGap");
+            final Integer maximumGap = rs.getInt("maximumGap");
+
             final int repaymentFrequencyTypeId = JdbcSupport.getInteger(rs, "repaymentPeriodFrequency");
             final EnumOptionData repaymentFrequencyType = LoanEnumerations.repaymentFrequencyType(repaymentFrequencyTypeId);
 
             final int amortizationTypeId = JdbcSupport.getInteger(rs, "amortizationMethod");
             final EnumOptionData amortizationType = LoanEnumerations.amortizationType(amortizationTypeId);
 
-            final int interestRateFrequencyTypeId = JdbcSupport.getInteger(rs, "interestRatePerPeriodFreq");
+            final Integer interestRateFrequencyTypeId = JdbcSupport.getInteger(rs, "interestRatePerPeriodFreq");
             final EnumOptionData interestRateFrequencyType = LoanEnumerations.interestRateFrequencyType(interestRateFrequencyTypeId);
 
             final int interestTypeId = JdbcSupport.getInteger(rs, "interestMethod");
             final EnumOptionData interestType = LoanEnumerations.interestType(interestTypeId);
 
             final int interestCalculationPeriodTypeId = JdbcSupport.getInteger(rs, "interestCalculationInPeriodMethod");
+            final Boolean allowPartialPeriodInterestCalcualtion = rs.getBoolean("allowPartialPeriodInterestCalcualtion");
             final EnumOptionData interestCalculationPeriodType = LoanEnumerations
                     .interestCalculationPeriodType(interestCalculationPeriodTypeId);
 
@@ -322,8 +351,7 @@ public class LoanProductReadPlatformServiceImpl implements LoanProductReadPlatfo
                 final Integer compoundingFrequencyEnumValue = JdbcSupport.getInteger(rs, "compoundingFrequencyTypeEnum");
                 EnumOptionData compoundingFrequencyType = null;
                 if (compoundingFrequencyEnumValue != null) {
-                    compoundingFrequencyType = LoanEnumerations
-                            .interestRecalculationFrequencyType(compoundingFrequencyEnumValue);
+                    compoundingFrequencyType = LoanEnumerations.interestRecalculationFrequencyType(compoundingFrequencyEnumValue);
                 }
                 final Integer compoundingInterval = JdbcSupport.getInteger(rs, "compoundingInterval");
                 final LocalDate compoundingFrequencyDate = JdbcSupport.getLocalDate(rs, "compoundingFrequencyDate");
@@ -369,15 +397,19 @@ public class LoanProductReadPlatformServiceImpl implements LoanProductReadPlatfo
             return new LoanProductData(id, name, shortName, description, currency, principal, minPrincipal, maxPrincipal, tolerance,
                     numberOfRepayments, minNumberOfRepayments, maxNumberOfRepayments, repaymentEvery, interestRatePerPeriod,
                     minInterestRatePerPeriod, maxInterestRatePerPeriod, annualInterestRate, repaymentFrequencyType,
-                    interestRateFrequencyType, amortizationType, interestType, interestCalculationPeriodType, fundId, fundName,
-                    transactionStrategyId, transactionStrategyName, graceOnPrincipalPayment, graceOnInterestPayment,
-                    graceOnInterestCharged, this.charges, accountingRuleType, includeInBorrowerCycle, useBorrowerCycle, startDate,
-                    closeDate, status, externalId, principalVariationsForBorrowerCycle, interestRateVariationsForBorrowerCycle,
+                    interestRateFrequencyType, amortizationType, interestType, interestCalculationPeriodType,
+                    allowPartialPeriodInterestCalcualtion, fundId, fundName, transactionStrategyId, transactionStrategyName,
+                    graceOnPrincipalPayment, graceOnInterestPayment, graceOnInterestCharged, this.charges, accountingRuleType,
+                    includeInBorrowerCycle, useBorrowerCycle, startDate, closeDate, status, externalId,
+                    principalVariationsForBorrowerCycle, interestRateVariationsForBorrowerCycle,
                     numberOfRepaymentVariationsForBorrowerCycle, multiDisburseLoan, maxTrancheCount, outstandingLoanBalance,
                     graceOnArrearsAgeing, overdueDaysForNPA, daysInMonthType, daysInYearType, isInterestRecalculationEnabled,
                     interestRecalculationData, minimumDaysBetweenDisbursalAndFirstRepayment, holdGuaranteeFunds, loanProductGuaranteeData,
                     principalThresholdForLastInstallment, accountMovesOutOfNPAOnlyOnArrearsCompletion, canDefineInstallmentAmount,
-                    installmentAmountInMultiplesOf, allowAttributeOverrides);
+                    installmentAmountInMultiplesOf, allowAttributeOverrides, isLinkedToFloatingInterestRates, floatingRateId,
+                    floatingRateName, interestRateDifferential, minDifferentialLendingRate, defaultDifferentialLendingRate,
+                    maxDifferentialLendingRate, isFloatingInterestRateCalculationAllowed, isVariableIntallmentsAllowed, minimumGap,
+                    maximumGap);
         }
     }
 

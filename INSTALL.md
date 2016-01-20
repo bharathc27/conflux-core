@@ -32,6 +32,7 @@ The three ways to get up and running with mifos platform is:
 1. Use Amazon AWS and mifosplatform public AMI to spin up a new instance in the cloud
 2. Manually install the prerequisite software on your own machine, follow setup instructions and use release artifacts to get platform running yourself.
 
+
 ## 1. Launch script automatic out-of-the box setup
 
 Important : Automatic setup is currently broken, please follow the instructions for **Manual Installation** instead. For details of the issue, refer comments at https://mifosforge.jira.com/browse/MIFOSX-1756
@@ -48,7 +49,8 @@ $ ./runmifosx.sh
 
 ## 2. Amazon Public AMI
 
-  Use AWS Wizard to launch instance by using this link: <a target="_blank" href="https://console.aws.amazon.com/ec2/home?region=ap-southeast-1#launchAmi=ami-5ad9d308" title="Latest Mifos Platform Public AMI">Mifos Platform AMI (ami-5ad9d308)</a>
+  Use AWS Wizard to launch instance by using the latest ami-id(image) from this link:-
+  https://en.wikipedia.org/wiki/Mifos_X >> Amazon EC2 AMI Locator
 
   *Note:* Read through the following as you step through the AWS Wizard
   
@@ -63,18 +65,7 @@ $ ./runmifosx.sh
     - Community app should be available @ https://[public DNS]:8443/community-app
     - API docs should be available @ https://[public DNS]:8443/api-docs/apiLive.htm
 
-  *Name:* Mifos Platform 15.09.2.RELEASE Public AMI
-  
- - AMI ID: ami-5ad9d308
- - Kernel ID: aki-503e7402
- - Name: Mifos Platform 15.09.2.RELEASE Public AMI
- - Owner: 239215483039
- - Source: 239215483039/Mifos X-15.09.2 release
- - Architecture: Ubuntu12.04 LTS x86_64
- - Built starting from Ubuntu AMI ami-5ad9d308
- - Java 1.7.0_51 64 bit JVM
- - Tomcat 7.0.39 (with SSL configured for self-signed certificate)
- - MySql 5.5.31
+ A step by step process for the same is also available at this link: https://mifosforge.jira.com/wiki/display/docs/Mifos+X+Amazon+EC2+Install+Guide
 
 ## 3. Manual Installation
 

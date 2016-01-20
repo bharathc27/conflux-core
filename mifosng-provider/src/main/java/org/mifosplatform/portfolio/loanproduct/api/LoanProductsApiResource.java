@@ -44,8 +44,11 @@ import org.mifosplatform.organisation.monetary.service.CurrencyReadPlatformServi
 import org.mifosplatform.portfolio.charge.data.ChargeData;
 import org.mifosplatform.portfolio.charge.service.ChargeReadPlatformService;
 import org.mifosplatform.portfolio.common.service.DropdownReadPlatformService;
+import org.mifosplatform.portfolio.floatingrates.data.FloatingRateData;
+import org.mifosplatform.portfolio.floatingrates.service.FloatingRatesReadPlatformService;
 import org.mifosplatform.portfolio.fund.data.FundData;
 import org.mifosplatform.portfolio.fund.service.FundReadPlatformService;
+import org.mifosplatform.portfolio.loanproduct.LoanProductConstants;
 import org.mifosplatform.portfolio.loanproduct.data.LoanProductData;
 import org.mifosplatform.portfolio.loanproduct.data.TransactionProcessingStrategyData;
 import org.mifosplatform.portfolio.loanproduct.productmix.data.ProductMixData;
@@ -68,12 +71,14 @@ public class LoanProductsApiResource {
             "minNumberOfRepayments", "maxNumberOfRepayments", "repaymentEvery", "repaymentFrequencyType", "graceOnPrincipalPayment",
             "graceOnInterestPayment", "graceOnInterestCharged", "interestRatePerPeriod", "minInterestRatePerPeriod",
             "maxInterestRatePerPeriod", "interestRateFrequencyType", "annualInterestRate", "amortizationType", "interestType",
-            "interestCalculationPeriodType", "inArrearsTolerance", "transactionProcessingStrategyId", "transactionProcessingStrategyName",
-            "charges", "accountingRule", "externalId", "accountingMappings", "paymentChannelToFundSourceMappings", "fundOptions",
-            "paymentTypeOptions", "currencyOptions", "repaymentFrequencyTypeOptions", "interestRateFrequencyTypeOptions",
-            "amortizationTypeOptions", "interestTypeOptions", "interestCalculationPeriodTypeOptions",
-            "transactionProcessingStrategyOptions", "chargeOptions", "accountingOptions", "accountingRuleOptions",
-            "accountingMappingOptions"));
+            "interestCalculationPeriodType", LoanProductConstants.allowPartialPeriodInterestCalcualtionParamName, "inArrearsTolerance",
+            "transactionProcessingStrategyId", "transactionProcessingStrategyName", "charges", "accountingRule", "externalId",
+            "accountingMappings", "paymentChannelToFundSourceMappings", "fundOptions", "paymentTypeOptions", "currencyOptions",
+            "repaymentFrequencyTypeOptions", "interestRateFrequencyTypeOptions", "amortizationTypeOptions", "interestTypeOptions",
+            "interestCalculationPeriodTypeOptions", "transactionProcessingStrategyOptions", "chargeOptions", "accountingOptions",
+            "accountingRuleOptions", "accountingMappingOptions", "floatingRateOptions", "isLinkedToFloatingInterestRates",
+            "floatingRatesId", "interestRateDifferential", "minDifferentialLendingRate", "defaultDifferentialLendingRate",
+            "maxDifferentialLendingRate", "isFloatingInterestRateCalculationAllowed"));
 
     private final Set<String> PRODUCT_MIX_DATA_PARAMETERS = new HashSet<>(Arrays.asList("productId", "productName", "restrictedProducts",
             "allowedProducts", "productOptions"));
@@ -95,6 +100,7 @@ public class LoanProductsApiResource {
     private final ProductMixReadPlatformService productMixReadPlatformService;
     private final DropdownReadPlatformService commonDropdownReadPlatformService;
     private final PaymentTypeReadPlatformService paymentTypeReadPlatformService;
+    private final FloatingRatesReadPlatformService floatingRateReadPlatformService;
 
     @Autowired
     public LoanProductsApiResource(final PlatformSecurityContext context, final LoanProductReadPlatformService readPlatformService,
@@ -108,7 +114,8 @@ public class LoanProductsApiResource {
             final DefaultToApiJsonSerializer<ProductMixData> productMixDataApiJsonSerializer,
             final ProductMixReadPlatformService productMixReadPlatformService,
             final DropdownReadPlatformService commonDropdownReadPlatformService,
-            PaymentTypeReadPlatformService paymentTypeReadPlatformService) {
+            PaymentTypeReadPlatformService paymentTypeReadPlatformService,
+            final FloatingRatesReadPlatformService floatingRateReadPlatformService) {
         this.context = context;
         this.loanProductReadPlatformService = readPlatformService;
         this.chargeReadPlatformService = chargeReadPlatformService;
@@ -124,6 +131,7 @@ public class LoanProductsApiResource {
         this.productMixReadPlatformService = productMixReadPlatformService;
         this.commonDropdownReadPlatformService = commonDropdownReadPlatformService;
         this.paymentTypeReadPlatformService = paymentTypeReadPlatformService;
+        this.floatingRateReadPlatformService = floatingRateReadPlatformService;
     }
 
     @POST
@@ -279,13 +287,14 @@ public class LoanProductsApiResource {
                 .retrieveInterestRecalculationFrequencyTypeOptions();
         final List<EnumOptionData> preCloseInterestCalculationStrategyOptions = dropdownReadPlatformService
                 .retrivePreCloseInterestCalculationStrategyOptions();
+        final List<FloatingRateData> floatingRateOptions = this.floatingRateReadPlatformService.retrieveLookupActive();
 
         return new LoanProductData(productData, chargeOptions, penaltyOptions, paymentTypeOptions, currencyOptions,
                 amortizationTypeOptions, interestTypeOptions, interestCalculationPeriodTypeOptions, repaymentFrequencyTypeOptions,
                 interestRateFrequencyTypeOptions, fundOptions, transactionProcessingStrategyOptions, accountOptions,
                 accountingRuleTypeOptions, loanCycleValueConditionTypeOptions, daysInMonthTypeOptions, daysInYearTypeOptions,
                 interestRecalculationCompoundingTypeOptions, rescheduleStrategyTypeOptions, interestRecalculationFrequencyTypeOptions,
-                preCloseInterestCalculationStrategyOptions);
+                preCloseInterestCalculationStrategyOptions, floatingRateOptions);
     }
 
 }

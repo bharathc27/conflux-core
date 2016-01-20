@@ -29,9 +29,11 @@ import org.mifosplatform.organisation.staff.data.StaffData;
 import org.mifosplatform.organisation.staff.service.StaffReadPlatformService;
 import org.mifosplatform.portfolio.client.api.ClientApiConstants;
 import org.mifosplatform.portfolio.client.data.ClientData;
+import org.mifosplatform.portfolio.client.data.ClientNonPersonData;
 import org.mifosplatform.portfolio.client.data.ClientTimelineData;
 import org.mifosplatform.portfolio.client.domain.ClientEnumerations;
 import org.mifosplatform.portfolio.client.domain.ClientStatus;
+import org.mifosplatform.portfolio.client.domain.LegalForm;
 import org.mifosplatform.portfolio.client.exception.ClientNotFoundException;
 import org.mifosplatform.portfolio.group.data.GroupGeneralData;
 import org.mifosplatform.portfolio.savings.data.SavingsProductData;
@@ -103,9 +105,18 @@ public class ClientReadPlatformServiceImpl implements ClientReadPlatformService 
 
         final List<CodeValueData> clientClassificationOptions = new ArrayList<>(
                 this.codeValueReadPlatformService.retrieveCodeValuesByCode(ClientApiConstants.CLIENT_CLASSIFICATION));
+        
+        final List<CodeValueData> clientNonPersonConstitutionOptions = new ArrayList<>(
+                this.codeValueReadPlatformService.retrieveCodeValuesByCode(ClientApiConstants.CLIENT_NON_PERSON_CONSTITUTION));
+        
+        final List<CodeValueData> clientNonPersonMainBusinessLineOptions = new ArrayList<>(
+                this.codeValueReadPlatformService.retrieveCodeValuesByCode(ClientApiConstants.CLIENT_NON_PERSON_MAIN_BUSINESS_LINE));
+        
+        final List<EnumOptionData> clientLegalFormOptions = ClientEnumerations.legalForm(LegalForm.values());
 
         return ClientData.template(defaultOfficeId, new LocalDate(), offices, staffOptions, null, genderOptions, savingsProductDatas,
-                clientTypeOptions, clientClassificationOptions);
+                clientTypeOptions, clientClassificationOptions, clientNonPersonConstitutionOptions, clientNonPersonMainBusinessLineOptions,
+                clientLegalFormOptions);
     }
 
     @Override
@@ -113,6 +124,7 @@ public class ClientReadPlatformServiceImpl implements ClientReadPlatformService 
 
         final String userOfficeHierarchy = this.context.officeHierarchy();
         final String underHierarchySearchString = userOfficeHierarchy + "%";
+        final String appUserID = String.valueOf(context.authenticatedUser().getId());
 
         // if (searchParameters.isScopedByOfficeHierarchy()) {
         // this.context.validateAccessRights(searchParameters.getHierarchy());
@@ -123,6 +135,10 @@ public class ClientReadPlatformServiceImpl implements ClientReadPlatformService 
         sqlBuilder.append("select SQL_CALC_FOUND_ROWS ");
         sqlBuilder.append(this.clientMapper.schema());
         sqlBuilder.append(" where (o.hierarchy like ? or transferToOffice.hierarchy like ?) ");
+        
+        if(searchParameters.isSelfUser()){
+        	sqlBuilder.append(" and c.id in (select umap.client_id from m_selfservice_user_client_mapping as umap where umap.appuser_id = ? ) ");
+        }
 
         final String extraCriteria = buildSqlStringFromClientCriteria(searchParameters);
 
@@ -146,8 +162,11 @@ public class ClientReadPlatformServiceImpl implements ClientReadPlatformService 
         }
 
         final String sqlCountRows = "SELECT FOUND_ROWS()";
-        return this.paginationHelper.fetchPage(this.jdbcTemplate, sqlCountRows, sqlBuilder.toString(), new Object[] {
-                underHierarchySearchString, underHierarchySearchString }, this.clientMapper);
+        Object[] params = new Object[] {underHierarchySearchString, underHierarchySearchString };
+        if(searchParameters.isSelfUser()){
+            params = new Object[] {underHierarchySearchString, underHierarchySearchString, appUserID };
+        }
+        return this.paginationHelper.fetchPage(this.jdbcTemplate, sqlCountRows, sqlBuilder.toString(), params, this.clientMapper);
     }
 
     private String buildSqlStringFromClientCriteria(final SearchParameters searchParameters) {
@@ -294,6 +313,7 @@ public class ClientReadPlatformServiceImpl implements ClientReadPlatformService 
             sqlBuilder.append("cvclienttype.code_value as clienttypeValue, ");
             sqlBuilder.append("c.client_classification_cv_id as classificationId, ");
             sqlBuilder.append("cvclassification.code_value as classificationValue, ");
+            sqlBuilder.append("c.legal_form_enum as legalFormEnum, ");
             sqlBuilder.append("c.activation_date as activationDate, c.image_id as imageId, ");
             sqlBuilder.append("c.staff_id as staffId, s.display_name as staffName,");
             sqlBuilder.append("c.default_savings_product as savingsProductId, sp.name as savingsProductName, ");
@@ -311,10 +331,19 @@ public class ClientReadPlatformServiceImpl implements ClientReadPlatformService 
 
             sqlBuilder.append("acu.username as activatedByUsername, ");
             sqlBuilder.append("acu.firstname as activatedByFirstname, ");
-            sqlBuilder.append("acu.lastname as activatedByLastname ");
+            sqlBuilder.append("acu.lastname as activatedByLastname, ");
+            
+            sqlBuilder.append("cnp.constitution_cv_id as constitutionId, ");
+            sqlBuilder.append("cvConstitution.code_value as constitutionValue, ");
+            sqlBuilder.append("cnp.incorp_no as incorpNo, ");
+            sqlBuilder.append("cnp.incorp_validity_till as incorpValidityTill, ");
+            sqlBuilder.append("cnp.main_business_line_cv_id as mainBusinessLineId, ");
+            sqlBuilder.append("cvMainBusinessLine.code_value as mainBusinessLineValue, ");
+            sqlBuilder.append("cnp.remarks as remarks ");
 
             sqlBuilder.append("from m_client c ");
             sqlBuilder.append("join m_office o on o.id = c.office_id ");
+            sqlBuilder.append("left join m_client_non_person cnp on cnp.client_id = c.id ");
             sqlBuilder.append("join m_group_client pgc on pgc.client_id = c.id ");
             sqlBuilder.append("left join m_staff s on s.id = c.staff_id ");
             sqlBuilder.append("left join m_savings_product sp on sp.id = c.default_savings_product ");
@@ -327,6 +356,8 @@ public class ClientReadPlatformServiceImpl implements ClientReadPlatformService 
             sqlBuilder.append("left join m_code_value cvclienttype on cvclienttype.id = c.client_type_cv_id ");
             sqlBuilder.append("left join m_code_value cvclassification on cvclassification.id = c.client_classification_cv_id ");
             sqlBuilder.append("left join m_code_value cvSubStatus on cvSubStatus.id = c.sub_status ");
+            sqlBuilder.append("left join m_code_value cvConstitution on cvConstitution.id = cnp.constitution_cv_id ");
+            sqlBuilder.append("left join m_code_value cvMainBusinessLine on cvMainBusinessLine.id = cnp.main_business_line_cv_id ");
 
             this.schema = sqlBuilder.toString();
         }
@@ -346,7 +377,8 @@ public class ClientReadPlatformServiceImpl implements ClientReadPlatformService 
             final Long subStatusId = JdbcSupport.getLong(rs, "subStatus");
             final String subStatusValue = rs.getString("subStatusValue");
             final String subStatusDesc = rs.getString("subStatusDesc");
-            final CodeValueData subStatus = CodeValueData.instance(subStatusId, subStatusValue, subStatusDesc);
+            final boolean isActive = false;
+            final CodeValueData subStatus = CodeValueData.instance(subStatusId, subStatusValue, subStatusDesc, isActive);
 
             final Long officeId = JdbcSupport.getLong(rs, "officeId");
             final String officeName = rs.getString("officeName");
@@ -398,6 +430,23 @@ public class ClientReadPlatformServiceImpl implements ClientReadPlatformService 
             final String activatedByUsername = rs.getString("activatedByUsername");
             final String activatedByFirstname = rs.getString("activatedByFirstname");
             final String activatedByLastname = rs.getString("activatedByLastname");
+            
+            final Integer legalFormEnum = JdbcSupport.getInteger(rs, "legalFormEnum");
+            EnumOptionData legalForm = null;
+            if(legalFormEnum != null)
+            		legalForm = ClientEnumerations.legalForm(legalFormEnum);
+            
+            final Long constitutionId = JdbcSupport.getLong(rs, "constitutionId");
+            final String constitutionValue = rs.getString("constitutionValue");
+            final CodeValueData constitution = CodeValueData.instance(constitutionId, constitutionValue);
+            final String incorpNo = rs.getString("incorpNo");
+            final LocalDate incorpValidityTill = JdbcSupport.getLocalDate(rs, "incorpValidityTill");
+            final Long mainBusinessLineId = JdbcSupport.getLong(rs, "mainBusinessLineId");            
+            final String mainBusinessLineValue = rs.getString("mainBusinessLineValue");
+            final CodeValueData mainBusinessLine = CodeValueData.instance(mainBusinessLineId, mainBusinessLineValue);
+            final String remarks = rs.getString("remarks");
+            
+            final ClientNonPersonData clientNonPerson = new ClientNonPersonData(constitution, incorpNo, incorpValidityTill, mainBusinessLine, remarks);
 
             final ClientTimelineData timeline = new ClientTimelineData(submittedOnDate, submittedByUsername, submittedByFirstname,
                     submittedByLastname, activationDate, activatedByUsername, activatedByFirstname, activatedByLastname, closedOnDate,
@@ -406,7 +455,7 @@ public class ClientReadPlatformServiceImpl implements ClientReadPlatformService 
             return ClientData.instance(accountNo, status, subStatus, officeId, officeName, transferToOfficeId, transferToOfficeName, id,
                     firstname, middlename, lastname, fullname, displayName, externalId, mobileNo, dateOfBirth, gender, activationDate,
                     imageId, staffId, staffName, timeline, savingsProductId, savingsProductName, savingsAccountId, clienttype,
-                    classification);
+                    classification, legalForm, clientNonPerson);
 
         }
     }
@@ -446,6 +495,7 @@ public class ClientReadPlatformServiceImpl implements ClientReadPlatformService 
             builder.append("cvclienttype.code_value as clienttypeValue, ");
             builder.append("c.client_classification_cv_id as classificationId, ");
             builder.append("cvclassification.code_value as classificationValue, ");
+            builder.append("c.legal_form_enum as legalFormEnum, ");
 
             builder.append("c.submittedon_date as submittedOnDate, ");
             builder.append("sbu.username as submittedByUsername, ");
@@ -461,6 +511,14 @@ public class ClientReadPlatformServiceImpl implements ClientReadPlatformService 
             builder.append("acu.username as activatedByUsername, ");
             builder.append("acu.firstname as activatedByFirstname, ");
             builder.append("acu.lastname as activatedByLastname, ");
+            
+            builder.append("cnp.constitution_cv_id as constitutionId, ");
+            builder.append("cvConstitution.code_value as constitutionValue, ");
+            builder.append("cnp.incorp_no as incorpNo, ");
+            builder.append("cnp.incorp_validity_till as incorpValidityTill, ");
+            builder.append("cnp.main_business_line_cv_id as mainBusinessLineId, ");
+            builder.append("cvMainBusinessLine.code_value as mainBusinessLineValue, ");
+            builder.append("cnp.remarks as remarks, ");
 
             builder.append("c.activation_date as activationDate, c.image_id as imageId, ");
             builder.append("c.staff_id as staffId, s.display_name as staffName, ");
@@ -468,6 +526,7 @@ public class ClientReadPlatformServiceImpl implements ClientReadPlatformService 
             builder.append("c.default_savings_account as savingsAccountId ");
             builder.append("from m_client c ");
             builder.append("join m_office o on o.id = c.office_id ");
+            builder.append("left join m_client_non_person cnp on cnp.client_id = c.id ");
             builder.append("left join m_staff s on s.id = c.staff_id ");
             builder.append("left join m_savings_product sp on sp.id = c.default_savings_product ");
             builder.append("left join m_office transferToOffice on transferToOffice.id = c.transfer_to_office_id ");
@@ -478,6 +537,8 @@ public class ClientReadPlatformServiceImpl implements ClientReadPlatformService 
             builder.append("left join m_code_value cvclienttype on cvclienttype.id = c.client_type_cv_id ");
             builder.append("left join m_code_value cvclassification on cvclassification.id = c.client_classification_cv_id ");
             builder.append("left join m_code_value cvSubStatus on cvSubStatus.id = c.sub_status ");
+            builder.append("left join m_code_value cvConstitution on cvConstitution.id = cnp.constitution_cv_id ");
+            builder.append("left join m_code_value cvMainBusinessLine on cvMainBusinessLine.id = cnp.main_business_line_cv_id ");
 
             this.schema = builder.toString();
         }
@@ -497,7 +558,8 @@ public class ClientReadPlatformServiceImpl implements ClientReadPlatformService 
             final Long subStatusId = JdbcSupport.getLong(rs, "subStatus");
             final String subStatusValue = rs.getString("subStatusValue");
             final String subStatusDesc = rs.getString("subStatusDesc");
-            final CodeValueData subStatus = CodeValueData.instance(subStatusId, subStatusValue, subStatusDesc);
+            final boolean isActive = false;
+            final CodeValueData subStatus = CodeValueData.instance(subStatusId, subStatusValue, subStatusDesc, isActive);
 
             final Long officeId = JdbcSupport.getLong(rs, "officeId");
             final String officeName = rs.getString("officeName");
@@ -548,6 +610,23 @@ public class ClientReadPlatformServiceImpl implements ClientReadPlatformService 
             final String activatedByUsername = rs.getString("activatedByUsername");
             final String activatedByFirstname = rs.getString("activatedByFirstname");
             final String activatedByLastname = rs.getString("activatedByLastname");
+            
+            final Integer legalFormEnum = JdbcSupport.getInteger(rs, "legalFormEnum");
+            EnumOptionData legalForm = null;
+            if(legalFormEnum != null)
+            		legalForm = ClientEnumerations.legalForm(legalFormEnum);
+            
+            final Long constitutionId = JdbcSupport.getLong(rs, "constitutionId");
+            final String constitutionValue = rs.getString("constitutionValue");
+            final CodeValueData constitution = CodeValueData.instance(constitutionId, constitutionValue);
+            final String incorpNo = rs.getString("incorpNo");
+            final LocalDate incorpValidityTill = JdbcSupport.getLocalDate(rs, "incorpValidityTill");
+            final Long mainBusinessLineId = JdbcSupport.getLong(rs, "mainBusinessLineId");            
+            final String mainBusinessLineValue = rs.getString("mainBusinessLineValue");
+            final CodeValueData mainBusinessLine = CodeValueData.instance(mainBusinessLineId, mainBusinessLineValue);
+            final String remarks = rs.getString("remarks");
+            
+            final ClientNonPersonData clientNonPerson = new ClientNonPersonData(constitution, incorpNo, incorpValidityTill, mainBusinessLine, remarks);
 
             final ClientTimelineData timeline = new ClientTimelineData(submittedOnDate, submittedByUsername, submittedByFirstname,
                     submittedByLastname, activationDate, activatedByUsername, activatedByFirstname, activatedByLastname, closedOnDate,
@@ -556,7 +635,7 @@ public class ClientReadPlatformServiceImpl implements ClientReadPlatformService 
             return ClientData.instance(accountNo, status, subStatus, officeId, officeName, transferToOfficeId, transferToOfficeName, id,
                     firstname, middlename, lastname, fullname, displayName, externalId, mobileNo, dateOfBirth, gender, activationDate,
                     imageId, staffId, staffName, timeline, savingsProductId, savingsProductName, savingsAccountId, clienttype,
-                    classification);
+                    classification, legalForm, clientNonPerson);
 
         }
     }
@@ -664,7 +743,11 @@ public class ClientReadPlatformServiceImpl implements ClientReadPlatformService 
         final List<CodeValueData> narrations = new ArrayList<>(this.codeValueReadPlatformService.retrieveCodeValuesByCode(clientNarrations));
         final Collection<CodeValueData> clientTypeOptions = null;
         final Collection<CodeValueData> clientClassificationOptions = null;
-        return ClientData.template(null, null, null, null, narrations, null, null, clientTypeOptions, clientClassificationOptions);
+        final Collection<CodeValueData> clientNonPersonConstitutionOptions = null;
+        final Collection<CodeValueData> clientNonPersonMainBusinessLineOptions = null;
+        final List<EnumOptionData> clientLegalFormOptions = null;
+        return ClientData.template(null, null, null, null, narrations, null, null, clientTypeOptions, clientClassificationOptions, 
+        		clientNonPersonConstitutionOptions, clientNonPersonMainBusinessLineOptions, clientLegalFormOptions);
     }
 
 }

@@ -8,7 +8,10 @@ package org.mifosplatform.portfolio.loanaccount.loanschedule.service;
 import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.HashSet;
+import java.util.Iterator;
 import java.util.List;
+import java.util.Set;
 
 import org.joda.time.LocalDate;
 import org.mifosplatform.infrastructure.configuration.domain.ConfigurationDomainService;
@@ -18,16 +21,14 @@ import org.mifosplatform.infrastructure.core.data.DataValidatorBuilder;
 import org.mifosplatform.infrastructure.core.exception.PlatformApiDataValidationException;
 import org.mifosplatform.infrastructure.core.serialization.FromJsonHelper;
 import org.mifosplatform.infrastructure.core.service.DateUtils;
-import org.mifosplatform.organisation.monetary.domain.ApplicationCurrency;
-import org.mifosplatform.organisation.monetary.domain.ApplicationCurrencyRepositoryWrapper;
+import org.mifosplatform.organisation.monetary.data.CurrencyData;
 import org.mifosplatform.organisation.monetary.domain.MonetaryCurrency;
 import org.mifosplatform.organisation.monetary.domain.Money;
+import org.mifosplatform.organisation.monetary.service.CurrencyReadPlatformService;
 import org.mifosplatform.portfolio.accountdetails.domain.AccountType;
-import org.mifosplatform.portfolio.calendar.domain.CalendarEntityType;
-import org.mifosplatform.portfolio.calendar.domain.CalendarInstance;
-import org.mifosplatform.portfolio.calendar.domain.CalendarInstanceRepository;
+import org.mifosplatform.portfolio.loanaccount.data.ScheduleGeneratorDTO;
 import org.mifosplatform.portfolio.loanaccount.domain.Loan;
-import org.mifosplatform.portfolio.loanaccount.domain.LoanAccountDomainService;
+import org.mifosplatform.portfolio.loanaccount.domain.LoanDisbursementDetails;
 import org.mifosplatform.portfolio.loanaccount.domain.LoanRepaymentScheduleInstallment;
 import org.mifosplatform.portfolio.loanaccount.domain.LoanRepaymentScheduleTransactionProcessorFactory;
 import org.mifosplatform.portfolio.loanaccount.domain.LoanTransaction;
@@ -40,6 +41,7 @@ import org.mifosplatform.portfolio.loanaccount.serialization.CalculateLoanSchedu
 import org.mifosplatform.portfolio.loanaccount.serialization.LoanApplicationCommandFromApiJsonHelper;
 import org.mifosplatform.portfolio.loanaccount.service.LoanAssembler;
 import org.mifosplatform.portfolio.loanaccount.service.LoanReadPlatformService;
+import org.mifosplatform.portfolio.loanaccount.service.LoanUtilService;
 import org.mifosplatform.portfolio.loanproduct.domain.LoanProduct;
 import org.mifosplatform.portfolio.loanproduct.domain.LoanProductRepository;
 import org.mifosplatform.portfolio.loanproduct.exception.LoanProductNotFoundException;
@@ -58,21 +60,20 @@ public class LoanScheduleCalculationPlatformServiceImpl implements LoanScheduleC
     private final LoanReadPlatformService loanReadPlatformService;
     private final LoanApplicationCommandFromApiJsonHelper loanApiJsonDeserializer;
     private final LoanAssembler loanAssembler;
-    private final ApplicationCurrencyRepositoryWrapper applicationCurrencyRepository;
-    private final LoanAccountDomainService accountDomainService;
-    private final CalendarInstanceRepository calendarInstanceRepository;
     private final LoanRepaymentScheduleTransactionProcessorFactory loanRepaymentScheduleTransactionProcessorFactory;
     private final ConfigurationDomainService configurationDomainService;
+    private final CurrencyReadPlatformService currencyReadPlatformService;
+    private final LoanUtilService loanUtilService;
 
     @Autowired
     public LoanScheduleCalculationPlatformServiceImpl(final CalculateLoanScheduleQueryFromApiJsonHelper fromApiJsonDeserializer,
             final LoanScheduleAssembler loanScheduleAssembler, final FromJsonHelper fromJsonHelper,
             final LoanProductRepository loanProductRepository, final LoanProductDataValidator loanProductCommandFromApiJsonDeserializer,
             final LoanReadPlatformService loanReadPlatformService, final LoanApplicationCommandFromApiJsonHelper loanApiJsonDeserializer,
-            final LoanAssembler loanAssembler, final ApplicationCurrencyRepositoryWrapper applicationCurrencyRepository,
-            final LoanAccountDomainService accountDomainService, final CalendarInstanceRepository calendarInstanceRepository,
+            final LoanAssembler loanAssembler,
             final LoanRepaymentScheduleTransactionProcessorFactory loanRepaymentScheduleTransactionProcessorFactory,
-            final ConfigurationDomainService configurationDomainService) {
+            final ConfigurationDomainService configurationDomainService, final CurrencyReadPlatformService currencyReadPlatformService,
+            final LoanUtilService loanUtilService) {
         this.fromApiJsonDeserializer = fromApiJsonDeserializer;
         this.loanScheduleAssembler = loanScheduleAssembler;
         this.fromJsonHelper = fromJsonHelper;
@@ -81,11 +82,10 @@ public class LoanScheduleCalculationPlatformServiceImpl implements LoanScheduleC
         this.loanReadPlatformService = loanReadPlatformService;
         this.loanApiJsonDeserializer = loanApiJsonDeserializer;
         this.loanAssembler = loanAssembler;
-        this.applicationCurrencyRepository = applicationCurrencyRepository;
-        this.accountDomainService = accountDomainService;
-        this.calendarInstanceRepository = calendarInstanceRepository;
         this.loanRepaymentScheduleTransactionProcessorFactory = loanRepaymentScheduleTransactionProcessorFactory;
         this.configurationDomainService = configurationDomainService;
+        this.currencyReadPlatformService = currencyReadPlatformService;
+        this.loanUtilService = loanUtilService;
     }
 
     @Override
@@ -155,20 +155,11 @@ public class LoanScheduleCalculationPlatformServiceImpl implements LoanScheduleC
                 }
             }
         }
-        final ApplicationCurrency applicationCurrency = this.applicationCurrencyRepository.findOneWithNotFoundDetection(currency);
-        final CalendarInstance calendarInstance = this.calendarInstanceRepository.findCalendarInstaneByEntityId(loan.getId(),
-                CalendarEntityType.LOANS.getValue());
-        final CalendarInstance restCalendarInstance = calendarInstanceRepository.findCalendarInstaneByEntityId(
-                loan.loanInterestRecalculationDetailId(), CalendarEntityType.LOAN_RECALCULATION_REST_DETAIL.getValue());
-        final CalendarInstance compoundingCalendarInstance = calendarInstanceRepository.findCalendarInstaneByEntityId(
-                loan.loanInterestRecalculationDetailId(), CalendarEntityType.LOAN_RECALCULATION_COMPOUNDING_DETAIL.getValue());
-        LocalDate calculatedRepaymentsStartingFromDate = accountDomainService.getCalculatedRepaymentsStartingFromDate(
-                loan.getDisbursementDate(), loan, calendarInstance);
-        LoanApplicationTerms loanApplicationTerms = loan.constructLoanApplicationTerms(applicationCurrency,
-                calculatedRepaymentsStartingFromDate, restCalendarInstance, compoundingCalendarInstance);
-        LoanRepaymentScheduleInstallment loanRepaymentScheduleInstallment = this.loanScheduleAssembler.calculatePrepaymentAmount(
-                currency, today, loanApplicationTerms, loan.charges(), loan.getOfficeId(), loan.retreiveListOfTransactionsPostDisbursementExcludeAccruals(),
-                loanRepaymentScheduleTransactionProcessor);
+        LoanApplicationTerms loanApplicationTerms = constructLoanApplicationTerms(loan);
+        LoanRepaymentScheduleInstallment loanRepaymentScheduleInstallment = this.loanScheduleAssembler.calculatePrepaymentAmount(currency,
+                today, loanApplicationTerms, loan.charges(), loan.getOfficeId(),
+                loan.retreiveListOfTransactionsPostDisbursementExcludeAccruals(), loanRepaymentScheduleTransactionProcessor,
+                loan.fetchRepaymentScheduleInstallments());
         Money totalAmount = totalPrincipal.plus(loanRepaymentScheduleInstallment.getFeeChargesOutstanding(currency)).plus(
                 loanRepaymentScheduleInstallment.getPenaltyChargesOutstanding(currency));
         Money interestDue = Money.zero(currency);
@@ -199,7 +190,8 @@ public class LoanScheduleCalculationPlatformServiceImpl implements LoanScheduleC
                         periodData.periodFromDate(), periodData.periodDueDate(), totalPrincipal.getAmount(), periodData
                                 .principalLoanBalanceOutstanding(), interestDue.getAmount(), loanRepaymentScheduleInstallment
                                 .getFeeChargesCharged(currency).getAmount(),
-                        loanRepaymentScheduleInstallment.getPenaltyChargesCharged(currency).getAmount(), totalAmount.getAmount());
+                        loanRepaymentScheduleInstallment.getPenaltyChargesCharged(currency).getAmount(), totalAmount.getAmount(),
+                        totalPrincipal.plus(interestDue).getAmount());
                 futureInstallments.add(loanSchedulePeriodData);
                 isNewPaymentRequired = false;
             } else if (periodData.periodDueDate().isAfter(today)) {
@@ -209,4 +201,73 @@ public class LoanScheduleCalculationPlatformServiceImpl implements LoanScheduleC
         }
         loanScheduleData.updateFuturePeriods(futureInstallments);
     }
+
+    @Override
+    public LoanScheduleData generateLoanScheduleForVariableInstallmentRequest(Long loanId, final String json) {
+        final Loan loan = this.loanAssembler.assembleFrom(loanId);
+        this.loanScheduleAssembler.assempleVariableScheduleFrom(loan, json);
+        return constructLoanScheduleData(loan);
+    }
+
+    private LoanScheduleData constructLoanScheduleData(Loan loan) {
+        Collection<LoanRepaymentScheduleInstallment> installments = loan.getRepaymentScheduleInstallments();
+        final List<LoanSchedulePeriodData> installmentData = new ArrayList<>();
+        final MonetaryCurrency currency = loan.getCurrency();
+        Money outstanding = loan.getPrincpal();
+
+        Set<LoanDisbursementDetails> disbursementDetails = new HashSet<>();
+        if (loan.isMultiDisburmentLoan()) {
+            disbursementDetails = loan.getDisbursementDetails();
+            outstanding = outstanding.zero();
+        }
+        Money principal = outstanding;
+        Iterator<LoanDisbursementDetails> disbursementItr = disbursementDetails.iterator();
+        LoanDisbursementDetails loanDisbursementDetails = null;
+        if (disbursementItr.hasNext()) {
+            loanDisbursementDetails = disbursementItr.next();
+        }
+
+        Money totalInterest = principal.zero();
+        Money totalCharge = principal.zero();
+        Money totalPenalty = principal.zero();
+
+        for (LoanRepaymentScheduleInstallment installment : installments) {
+            if (loanDisbursementDetails != null
+                    && !loanDisbursementDetails.expectedDisbursementDateAsLocalDate().isAfter(installment.getDueDate())) {
+                outstanding = outstanding.plus(loanDisbursementDetails.principal());
+                principal = principal.plus(loanDisbursementDetails.principal());
+                if (disbursementItr.hasNext()) {
+                    loanDisbursementDetails = disbursementItr.next();
+                } else {
+                    loanDisbursementDetails = null;
+                }
+            }
+            outstanding = outstanding.minus(installment.getPrincipal(currency));
+            LoanSchedulePeriodData loanSchedulePeriodData = LoanSchedulePeriodData.repaymentOnlyPeriod(installment.getInstallmentNumber(),
+                    installment.getFromDate(), installment.getDueDate(), installment.getPrincipal(currency).getAmount(),
+                    outstanding.getAmount(), installment.getInterestCharged(currency).getAmount(),
+                    installment.getFeeChargesCharged(currency).getAmount(), installment.getPenaltyChargesCharged(currency).getAmount(),
+                    installment.getDue(currency).getAmount(), installment.getTotalPrincipalAndInterest(currency).getAmount());
+            installmentData.add(loanSchedulePeriodData);
+            totalInterest = totalInterest.plus(installment.getInterestCharged(currency));
+            totalCharge = totalCharge.plus(installment.getFeeChargesCharged(currency));
+            totalPenalty = totalPenalty.plus(installment.getPenaltyChargesCharged(currency));
+        }
+
+        CurrencyData currencyData = this.currencyReadPlatformService.retrieveCurrency(currency.getCode());
+
+        LoanScheduleData scheduleData = new LoanScheduleData(currencyData, installmentData, loan.getLoanRepaymentScheduleDetail()
+                .getNumberOfRepayments(), principal.getAmount(), principal.getAmount(), totalInterest.getAmount(), totalCharge.getAmount(),
+                totalPenalty.getAmount(), principal.plus(totalCharge).plus(totalInterest).plus(totalPenalty).getAmount());
+
+        return scheduleData;
+    }
+
+    private LoanApplicationTerms constructLoanApplicationTerms(final Loan loan) {
+        final LocalDate recalculateFrom = null;
+        ScheduleGeneratorDTO scheduleGeneratorDTO = this.loanUtilService.buildScheduleGeneratorDTO(loan, recalculateFrom);
+        LoanApplicationTerms loanApplicationTerms = loan.constructLoanApplicationTerms(scheduleGeneratorDTO);
+        return loanApplicationTerms;
+    }
+
 }

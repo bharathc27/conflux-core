@@ -14,6 +14,7 @@ import org.mifosplatform.organisation.monetary.domain.ApplicationCurrency;
 import org.mifosplatform.organisation.monetary.domain.MonetaryCurrency;
 import org.mifosplatform.portfolio.calendar.domain.Calendar;
 import org.mifosplatform.portfolio.calendar.domain.CalendarInstance;
+import org.mifosplatform.portfolio.floatingrates.data.FloatingRateDTO;
 import org.mifosplatform.portfolio.loanaccount.data.HolidayDetailDTO;
 import org.mifosplatform.portfolio.loanaccount.domain.LoanCharge;
 import org.mifosplatform.portfolio.loanaccount.domain.LoanRepaymentScheduleInstallment;
@@ -30,13 +31,15 @@ public interface LoanScheduleGenerator {
 
     LoanScheduleDTO rescheduleNextInstallments(MathContext mc, LoanApplicationTerms loanApplicationTerms, Set<LoanCharge> loanCharges,
             final HolidayDetailDTO holidayDetailDTO, List<LoanTransaction> transactions,
-            LoanRepaymentScheduleTransactionProcessor loanRepaymentScheduleTransactionProcessor, List<LoanRepaymentScheduleInstallment> repaymentScheduleInstallments, LocalDate rescheduleFrom);
+            LoanRepaymentScheduleTransactionProcessor loanRepaymentScheduleTransactionProcessor,
+            List<LoanRepaymentScheduleInstallment> repaymentScheduleInstallments, LocalDate rescheduleFrom);
 
-    LoanRepaymentScheduleInstallment calculatePrepaymentAmount(MonetaryCurrency currency,
-            LocalDate onDate, LoanApplicationTerms loanApplicationTerms, MathContext mc, Set<LoanCharge> charges,
-            HolidayDetailDTO holidayDetailDTO, List<LoanTransaction> loanTransactions, LoanRepaymentScheduleTransactionProcessor loanRepaymentScheduleTransactionProcessor);
+    LoanRepaymentScheduleInstallment calculatePrepaymentAmount(MonetaryCurrency currency, LocalDate onDate,
+            LoanApplicationTerms loanApplicationTerms, MathContext mc, Set<LoanCharge> charges, HolidayDetailDTO holidayDetailDTO,
+            List<LoanTransaction> loanTransactions, LoanRepaymentScheduleTransactionProcessor loanRepaymentScheduleTransactionProcessor,
+            List<LoanRepaymentScheduleInstallment> repaymentScheduleInstallments);
 
     LoanRescheduleModel reschedule(final MathContext mathContext, final LoanRescheduleRequest loanRescheduleRequest,
             final ApplicationCurrency applicationCurrency, final HolidayDetailDTO holidayDetailDTO, CalendarInstance restCalendarInstance,
-            CalendarInstance compoundingCalendarInstance, final Calendar loanCalendar);
+            CalendarInstance compoundingCalendarInstance, final Calendar loanCalendar, FloatingRateDTO floatingRateDTO);
 }

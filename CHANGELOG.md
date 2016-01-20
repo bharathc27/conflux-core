@@ -6,6 +6,10 @@ See VERSIONING (https://github.com/openMF/mifosx/blob/master/VERSIONING.md) for 
 Releases
 ===============
 
+1. 12 Jan 2016 - 16.01.1.RELEASE
+1. 17 Dec 2015 - 15.12.2.RELEASE
+1. 02 Dec 2015 - 15.12.1.RELEASE
+1. 18 Nov 2015 - 15.11.2.RELEASE
 1. 04 Nov 2015 - 15.11.1.RELEASE
 1. 21 Oct 2015 - 15.10.2.RELEASE
 1. 20 Oct 2015 - 15.10.1.RELEASE
@@ -78,6 +82,139 @@ Releases
 1. 10 April 2013 - 0.11.2.beta
 1. 05 April 2013 - 0.11.1.beta
 1. 05 April 2013 - 0.11.0.beta
+
+16.01.1.RELEASE
+=============
+
+This release includes Variable Installments Feature.
+This release also includes many bug fixes as mentioned below.
+
+Platform & API
+
+New Features & Improvements
+Following stories of Variable Installments Epic
+ - [MIFOSX-2254] - Capture data at product level
+ - [MIFOSX-2255] - Allow installment due dates to be modified
+ - [MIFOSX-2257] - Add additional installments
+ - [MIFOSX-2419] - Add "consider partial period interest" option to loan
+ - [MIFOSX-2256] - Allow installment amounts to be modified (either total installment or principal portion can be modified)
+ 
+Bugs
+ 
+ - [MIFOSX-2207] - After Client transfer if loan repayment is done loan balance is displaying as negative in Transactions page
+ - [MIFOSX-2139] - Overdue Charges Not getting updated in repayment schedule after second tranche disbursement
+ - [MIFOSX-2160] - Not able to waive Charge displays internal server error
+ - [MIFOSX-2181] - Add Savings Fee Not working
+ - [MIFOSX-2189] - If %Approved amount Charge defined for multi tranche loan is calculating for %Disbursed amount
+ - [MIFOSX-2283] - Installment fee - Flat is not working as expected for multi tranche loans
+ - [MIFOSX-2284] - Not able to make loan repayment with the installment fees attached
+ - [MIFOSX-2285] - Overdue Charge with % Approved amount is not working as expected
+ - [MIFOSX-2286] - Overdue charge - Flat is not getting applied properly
+ - [MIFOSX-2290] - Penalties receivable is not displaying in Loan Transactions page for overdue loans.
+ - [MIFOSX-2292] - In Modify loan application not able to add any charges displayed internal server error
+ - [MIFOSX-2296] - Overdue charge applied as % Approved amount is collcting as % of Principal due in Loans
+ - [MIFOSX-2304] - Overdue charge is not getting applied properly
+ - [MIFOSX-2355] - For Floating interest - If expected disbursement date is modified during Loan approval then after disbursement interest is getting calculated wrt submitted date
+ - [MIFOSX-2356] - If the Expected disbursement date is modified during loan approval and the Loan is disbursed on the same date as modifed during approval then installment date is not getting updated as per disbursed date
+ - [MIFOSX-2358] - fix for last installment overdue charge
+ - [MIFOSX-2367] - For Yearly repayment if the Days in year is defined as 365 the interest is not getting calculated properly for loan with interest recalculation
+ - Retrofitted SPM API to ease the usage
+ - [CC-38] - adding client account no in client data
+ - [CC-32] - undo last tranche disbursal feature
+ - [CC-42] - adding new transaction date in collection sheet
+ - [CC-61] - validate holiday only once while doing repayment through collection 
+ 
+Community-App
+
+New Features & Improvements
+Variable Installments Feature
+
+Bugs
+ 
+ - [CC-48] - enabling code values based on active or inactive status
+ - [MIFOSX-2412] - Floating Rate UI Enhancements
+ - [MIFOSX-2413] - Adding tooltip for floating interest rate screens
+ - [MIFOSX-2419] - UI Chages to add partial period interest calcualtion
+ - [MIFOSX-2282] - Some times after fetching the latest code interest type is missing out while creating the loan product
+ 
+15.12.2.RELEASE
+=============
+This release introduces Customer Self Service APIs.
+This release also includes few bug fixes as mentioned below.
+
+Platform & API
+
+New Features & Improvements
+Customer Self Service APIs
+ - [MIFOSX-1666] - Users as Clients
+ - [MIFOSX-2247] - Read List of Savings Accounts  
+ - [MIFOSX-2246] - Read List of Loan Accounts  
+ - [MIFOSX-2245] - User login and account management  
+ - [MIFOSX-2243] - Manage User login accounts  
+ - [MIFOSX-2248] - Read Loan details  
+ - [MIFOSX-2249] - Read Savings details  
+ - [MIFOSX-2370] - API for account transfer  
+
+Bugs
+ - Changes to SPM framework fetch type
+ - [MIFOSX-2371] - Wrong Installment Calculation for equal installment declining balance - Hard coded number of days on year.
+ - [MIFOSX-2372] - Charge incorrectly applied in 'Update loan Summary' scheduled job
+ - [MIFOSX-2384] - After making loan repayment the the Total paid is not displaying properly if charge is attached to that loan.
+ - [MIFOSX-2385] - When request data of floating rate, server side send JSON data with locale specific format of date
+ - [MIFOSX-2388] - Frequency type isn't loaded during modifying loan application
+
+ 15.12.1.RELEASE
+=============
+This release includes first part of Social Performance Management Framework.
+This release also includes few bug fixes as mentioned below.
+
+Platform & API
+
+New Features & Improvements
+Following stories of Social Performance Management Framework Epic
+ - [MIFOSX-1961] - Create new survey
+ - [MIFOSX-1962] - Add general information
+ - [MIFOSX-1963] - Add questions to a survey
+ - [MIFOSX-1964] - Add look-up tables
+ - [MIFOSX-1965] - Assign default look-up table
+
+Bugs
+ - [MIFOSX-2184] - As a user I want my penalties only to apply to new loans that go overdue
+ - [MIFOSX-2313] - Loan provisioning entries not getting created for multi tranche loans if first tranche disbursement date is back dated
+ - [MIFOSX-2322] - Template-User defined report is not working as expected
+ - [MIFOSX-2348] - incorrect error Insufficient account balance due to guarantors funds onhold
+ - [MIFOSX-2363] - Repayment schedule generated after early repayment with interest recalculation is not proper
+ - [MIFOSX-2368] - For the Multi tranche Loans with Equal Principal payments, last installment is not calculating properly
+ 
+Community-App
+
+Bugs
+ - [MIFOSX-2058] - Opening Screen for Non-Admin Users
+ - [MIFOSX-2327] - Does not come back to group, when cancel transfer clients
+ - [MIFOSX-2362] - Not able to save modify loan aplication after undo disburse and undo approval
+
+15.11.2.RELEASE
+=============
+This release introduces floating rates feature.
+This release also includes few bug fixes as mentioned below.
+
+Platform & API
+
+New Features & Improvements
+ - [MIFOSX-1761] - Add support for floating interest rates for loan
+
+Bugs
+ - All issues found during testing of floating interest rates feature
+ - [MIFOSX-2328] - In Loan rescheduling if repayment date is changed the in Account details page Maturity date is not getting updated
+ 
+Community-App
+
+New Features & Improvements
+ - [MIFOSX-1761] - Add support for floating interest rates for loan
+
+Bugs
+ - [MIFOSX-2072] - 'validation.msg.invalid.decimal.format' Error in number fields in case the decimal symbol of current locale is comma
+ - [MIFOSX-2113] - Required some fields mandatory at the time of client creation
 
 15.11.1.RELEASE
 =============

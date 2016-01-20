@@ -5,6 +5,8 @@
  */
 package org.mifosplatform.portfolio.loanaccount.api;
 
+import static org.mifosplatform.portfolio.loanproduct.service.LoanEnumerations.interestType;
+
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.HashMap;
@@ -59,6 +61,7 @@ import org.mifosplatform.portfolio.charge.service.ChargeReadPlatformService;
 import org.mifosplatform.portfolio.client.data.ClientData;
 import org.mifosplatform.portfolio.collateral.data.CollateralData;
 import org.mifosplatform.portfolio.collateral.service.CollateralReadPlatformService;
+import org.mifosplatform.portfolio.floatingrates.data.InterestRatePeriodData;
 import org.mifosplatform.portfolio.fund.data.FundData;
 import org.mifosplatform.portfolio.fund.service.FundReadPlatformService;
 import org.mifosplatform.portfolio.group.data.GroupGeneralData;
@@ -83,8 +86,10 @@ import org.mifosplatform.portfolio.loanaccount.loanschedule.service.LoanSchedule
 import org.mifosplatform.portfolio.loanaccount.loanschedule.service.LoanScheduleHistoryReadPlatformService;
 import org.mifosplatform.portfolio.loanaccount.service.LoanChargeReadPlatformService;
 import org.mifosplatform.portfolio.loanaccount.service.LoanReadPlatformService;
+import org.mifosplatform.portfolio.loanproduct.LoanProductConstants;
 import org.mifosplatform.portfolio.loanproduct.data.LoanProductData;
 import org.mifosplatform.portfolio.loanproduct.data.TransactionProcessingStrategyData;
+import org.mifosplatform.portfolio.loanproduct.domain.InterestMethod;
 import org.mifosplatform.portfolio.loanproduct.service.LoanDropdownReadPlatformService;
 import org.mifosplatform.portfolio.loanproduct.service.LoanProductReadPlatformService;
 import org.mifosplatform.portfolio.note.data.NoteData;
@@ -105,19 +110,20 @@ import com.google.gson.JsonElement;
 public class LoansApiResource {
 
     private final Set<String> LOAN_DATA_PARAMETERS = new HashSet<>(Arrays.asList("id", "accountNo", "status", "externalId", "clientId",
-            "group", "loanProductId", "loanProductName", "loanProductDescription", "fundId", "fundName", "loanPurposeId",
-            "loanPurposeName", "loanOfficerId", "loanOfficerName", "currency", "principal", "totalOverpaid", "inArrearsTolerance",
-            "termFrequency", "termPeriodFrequencyType", "numberOfRepayments", "repaymentEvery", "interestRatePerPeriod",
-            "annualInterestRate", "repaymentFrequencyType", "transactionProcessingStrategyId", "transactionProcessingStrategyName",
-            "interestRateFrequencyType", "amortizationType", "interestType", "interestCalculationPeriodType",
-            "expectedFirstRepaymentOnDate", "graceOnPrincipalPayment", "graceOnInterestPayment", "graceOnInterestCharged",
-            "interestChargedFromDate", "timeline", "totalFeeChargesAtDisbursement", "summary", "repaymentSchedule", "transactions",
-            "charges", "collateral", "guarantors", "meeting", "productOptions", "amortizationTypeOptions", "interestTypeOptions",
-            "interestCalculationPeriodTypeOptions", "repaymentFrequencyTypeOptions", "repaymentFrequencyNthDayTypeOptions",
-            "repaymentFrequencyDaysOfWeekTypeOptions", "termFrequencyTypeOptions", "interestRateFrequencyTypeOptions", "fundOptions",
-            "repaymentStrategyOptions", "chargeOptions", "loanOfficerOptions", "loanPurposeOptions", "loanCollateralOptions",
-            "chargeTemplate", "calendarOptions", "syncDisbursementWithMeeting", "loanCounter", "loanProductCounter", "notes",
-            "accountLinkingOptions", "linkedAccount"));
+            "group", "loanProductId", "loanProductName", "loanProductDescription", "isLoanProductLinkedToFloatingRate", "fundId",
+            "fundName", "loanPurposeId", "loanPurposeName", "loanOfficerId", "loanOfficerName", "currency", "principal", "totalOverpaid",
+            "inArrearsTolerance", "termFrequency", "termPeriodFrequencyType", "numberOfRepayments", "repaymentEvery",
+            "interestRatePerPeriod", "annualInterestRate", "repaymentFrequencyType", "transactionProcessingStrategyId",
+            "transactionProcessingStrategyName", "interestRateFrequencyType", "amortizationType", "interestType",
+            "interestCalculationPeriodType", LoanProductConstants.allowPartialPeriodInterestCalcualtionParamName, "expectedFirstRepaymentOnDate",
+            "graceOnPrincipalPayment", "graceOnInterestPayment", "graceOnInterestCharged", "interestChargedFromDate", "timeline",
+            "totalFeeChargesAtDisbursement", "summary", "repaymentSchedule", "transactions", "charges", "collateral", "guarantors",
+            "meeting", "productOptions", "amortizationTypeOptions", "interestTypeOptions", "interestCalculationPeriodTypeOptions",
+            "repaymentFrequencyTypeOptions", "repaymentFrequencyNthDayTypeOptions", "repaymentFrequencyDaysOfWeekTypeOptions",
+            "termFrequencyTypeOptions", "interestRateFrequencyTypeOptions", "fundOptions", "repaymentStrategyOptions", "chargeOptions",
+            "loanOfficerOptions", "loanPurposeOptions", "loanCollateralOptions", "chargeTemplate", "calendarOptions",
+            "syncDisbursementWithMeeting", "loanCounter", "loanProductCounter", "notes", "accountLinkingOptions", "linkedAccount",
+            "interestRateDifferential", "isFloatingInterestRate", "interestRatesPeriods"));
 
     private final Set<String> LOAN_APPROVAL_DATA_PARAMETERS = new HashSet<>(Arrays.asList("approvalDate", "approvalAmount"));
     private final String resourceNameForPermissions = "LOAN";
@@ -354,6 +360,8 @@ public class LoansApiResource {
                     compoundingCalendarData);
         }
 
+        Collection<InterestRatePeriodData> interestRatesPeriods = this.loanReadPlatformService.retrieveLoanInterestRatePeriodData(loanId);
+
         Collection<LoanTransactionData> loanRepayments = null;
         LoanScheduleData repaymentSchedule = null;
         Collection<LoanChargeData> charges = null;
@@ -488,17 +496,21 @@ public class LoansApiResource {
             interestRateFrequencyTypeOptions = this.dropdownReadPlatformService.retrieveInterestRateFrequencyTypeOptions();
 
             amortizationTypeOptions = this.dropdownReadPlatformService.retrieveLoanAmortizationTypeOptions();
-            interestTypeOptions = this.dropdownReadPlatformService.retrieveLoanInterestTypeOptions();
+            if (product.isLinkedToFloatingInterestRates()) {
+                interestTypeOptions = Arrays.asList(interestType(InterestMethod.DECLINING_BALANCE));
+            } else {
+                interestTypeOptions = this.dropdownReadPlatformService.retrieveLoanInterestTypeOptions();
+            }
             interestCalculationPeriodTypeOptions = this.dropdownReadPlatformService.retrieveLoanInterestRateCalculatedInPeriodOptions();
 
             fundOptions = this.fundReadPlatformService.retrieveAllFunds();
             repaymentStrategyOptions = this.dropdownReadPlatformService.retreiveTransactionProcessingStrategies();
-            if(product.getMultiDisburseLoan()){
-            	chargeOptions = this.chargeReadPlatformService.retrieveLoanAccountApplicableCharges(loanId,
+            if (product.getMultiDisburseLoan()) {
+                chargeOptions = this.chargeReadPlatformService.retrieveLoanAccountApplicableCharges(loanId,
                         new ChargeTimeType[] { ChargeTimeType.OVERDUE_INSTALLMENT });
-            }else{
-            	chargeOptions = this.chargeReadPlatformService.retrieveLoanAccountApplicableCharges(loanId,
-                        new ChargeTimeType[] { ChargeTimeType.OVERDUE_INSTALLMENT, ChargeTimeType.TRANCHE_DISBURSEMENT });
+            } else {
+                chargeOptions = this.chargeReadPlatformService.retrieveLoanAccountApplicableCharges(loanId, new ChargeTimeType[] {
+                        ChargeTimeType.OVERDUE_INSTALLMENT, ChargeTimeType.TRANCHE_DISBURSEMENT });
             }
             chargeTemplate = this.loanChargeReadPlatformService.retrieveLoanChargeTemplate();
 
@@ -537,7 +549,7 @@ public class LoansApiResource {
                 null, null, repaymentStrategyOptions, interestRateFrequencyTypeOptions, amortizationTypeOptions, interestTypeOptions,
                 interestCalculationPeriodTypeOptions, fundOptions, chargeOptions, chargeTemplate, allowedLoanOfficers, loanPurposeOptions,
                 loanCollateralOptions, calendarOptions, notes, accountLinkingOptions, linkedAccount, disbursementData, emiAmountVariations,
-                overdueCharges, paidInAdvanceTemplate);
+                overdueCharges, paidInAdvanceTemplate, interestRatesPeriods);
 
         final ApiRequestJsonSerializationSettings settings = this.apiRequestParameterHelper.process(uriInfo.getQueryParameters(),
                 mandatoryResponseParameters);
@@ -650,6 +662,9 @@ public class LoansApiResource {
             result = this.commandsSourceWritePlatformService.logCommandSource(commandRequest);
         } else if (is(commandParam, "undodisbursal")) {
             final CommandWrapper commandRequest = builder.undoLoanApplicationDisbursal(loanId).build();
+            result = this.commandsSourceWritePlatformService.logCommandSource(commandRequest);
+        }else if (is(commandParam, "undolastdisbursal")) {
+            final CommandWrapper commandRequest = builder.undoLastDisbursalLoanApplication(loanId).build();
             result = this.commandsSourceWritePlatformService.logCommandSource(commandRequest);
         }
 

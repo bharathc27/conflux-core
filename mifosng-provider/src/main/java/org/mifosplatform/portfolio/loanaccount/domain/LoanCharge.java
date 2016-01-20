@@ -255,7 +255,7 @@ public class LoanCharge extends AbstractPersistable<Long> {
                 this.amountPaid = null;
                 if (isInstalmentFee()) {
                     if (numberOfRepayments == null) {
-                        numberOfRepayments = this.loan.repaymentScheduleDetail().getNumberOfRepayments();
+                        numberOfRepayments = this.loan.fetchNumberOfInstallmensAfterExceptions();
                     }
                     this.amount = chargeAmount.multiply(BigDecimal.valueOf(numberOfRepayments));
                 } else {
@@ -366,7 +366,7 @@ public class LoanCharge extends AbstractPersistable<Long> {
                 case FLAT:
                     if (isInstalmentFee()) {
                         if (numberOfRepayments == null) {
-                            numberOfRepayments = this.loan.repaymentScheduleDetail().getNumberOfRepayments();
+                            numberOfRepayments = this.loan.fetchNumberOfInstallmensAfterExceptions();
                         }
                         this.amount = amount.multiply(BigDecimal.valueOf(numberOfRepayments));
                     } else {
@@ -446,7 +446,7 @@ public class LoanCharge extends AbstractPersistable<Long> {
                 break;
                 case FLAT:
                     if (isInstalmentFee()) {
-                        this.amount = newValue.multiply(BigDecimal.valueOf(this.loan.repaymentScheduleDetail().getNumberOfRepayments()));
+                        this.amount = newValue.multiply(BigDecimal.valueOf(this.loan.fetchNumberOfInstallmensAfterExceptions()));
                     } else {
                         this.amount = newValue;
                     }
@@ -615,6 +615,10 @@ public class LoanCharge extends AbstractPersistable<Long> {
     public BigDecimal amountOutstanding() {
         return this.amountOutstanding;
     }
+    
+    public Money getAmountOutstanding(final MonetaryCurrency currency) {
+        return Money.of(currency, this.amountOutstanding);
+    }
 
     public boolean hasNotLoanIdentifiedBy(final Long loanId) {
         return !hasLoanIdentifiedBy(loanId);
@@ -644,6 +648,10 @@ public class LoanCharge extends AbstractPersistable<Long> {
 
     public boolean isNotFullyPaid() {
         return !isPaid();
+    }
+    
+    public boolean isChargePending(){
+        return isNotFullyPaid() && !isWaived();
     }
 
     public boolean isPaid() {
@@ -881,7 +889,7 @@ public class LoanCharge extends AbstractPersistable<Long> {
                 final Money amountWaived = chargePerInstallment.updateWaivedAndAmountPaidThroughChargePaymentAmount(currency);
                 this.amountWaived = this.amountWaived.add(amountWaived.getAmount());
                 this.amountOutstanding = this.amountOutstanding.subtract(amountWaived.getAmount());
-                if (determineIfFullyPaid()) {
+                if (determineIfFullyPaid() && Money.of(currency, this.amountWaived).isGreaterThanZero()) {
                     this.paid = false;
                     this.waived = true;
                 }
@@ -960,5 +968,9 @@ public class LoanCharge extends AbstractPersistable<Long> {
 
     public Loan getLoan() {
         return this.loan;
+    }
+    
+    public boolean isTrancheDisbursementCharge() {
+        return ChargeTimeType.fromInt(this.chargeTime).equals(ChargeTimeType.TRANCHE_DISBURSEMENT);
     }
 }

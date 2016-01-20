@@ -101,7 +101,7 @@ public class LoanApplicationApprovalTest {
 
     }
 
-    private HashMap createTrancheDetail(final String date, final String amount) {
+    public HashMap createTrancheDetail(final String date, final String amount) {
         HashMap<String, Object> detail = new HashMap<>();
         detail.put("expectedDisbursementDate", date);
         detail.put("principal", amount);
@@ -121,7 +121,8 @@ public class LoanApplicationApprovalTest {
                 + clientID);
 
         final Integer loanProductID = this.loanTransactionHelper.getLoanProductId(new LoanProductTestBuilder()
-                .withInterestTypeAsDecliningBalance().withTranches(true).build(null));
+                .withInterestTypeAsDecliningBalance().withTranches(true).withInterestCalculationPeriodTypeAsRepaymentPeriod(true)
+                .build(null));
         System.out.println("----------------------------------LOAN PRODUCT CREATED WITH ID-------------------------------------------"
                 + loanProductID);
 
@@ -242,7 +243,7 @@ public class LoanApplicationApprovalTest {
         return this.loanTransactionHelper.getLoanId(loanApplication);
     }
 
-    private Integer applyForLoanApplicationWithTranches(final Integer clientID, final Integer loanProductID, String principal,
+    public Integer applyForLoanApplicationWithTranches(final Integer clientID, final Integer loanProductID, String principal,
             List<HashMap> tranches) {
         System.out.println("--------------------------------APPLYING FOR LOAN APPLICATION--------------------------------");
         final String loanApplicationJSON = new LoanApplicationTestBuilder()
